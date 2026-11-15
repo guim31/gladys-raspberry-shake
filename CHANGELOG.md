@@ -10,6 +10,8 @@ the notes of the version's GitHub Release.
 
 ## [Unreleased]
 
+## [1.0.0] - 2026-11-15
+
 ### Added
 
 - A Raspberry Shake device per station: online status and last data received, from the UDP output
@@ -21,4 +23,5 @@ the notes of the version's GitHub Release.
 - A "Check the station now" action in the configuration screen.
 - Texts and documentation in English, French, German and Spanish.
 
-[Unreleased]: https://github.com/guim31/gladys-raspberry-shake/commits/main
+[Unreleased]: https://github.com/guim31/gladys-raspberry-shake/compare/v1.0.0...HEAD
+[1.0.0]: https://github.com/guim31/gladys-raspberry-shake/releases/tag/v1.0.0
