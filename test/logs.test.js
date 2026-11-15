@@ -100,3 +100,16 @@ test('a user action is one info line; a stranger on the port is said once', asyn
     '[WARN] [raspberry-shake] UDP packets from 198.51.100.7 ignored: not the address of the Shake',
   ]);
 });
+
+test('a Shake whose clock is days off: one warning, whatever the dates', async (t) => {
+  const w = await world(t);
+  const lines = captureLogs(t, 'info');
+  const packets = packetsOf(RECORDING, { to: 3 }).map((p) => ({
+    ...p,
+    time: p.time - 3 * 86_400_000,
+  }));
+  await replay(w, packets, { lag: 3 * 86_400_000 + 300 });
+  assert.deepEqual(lines.map(strip), [
+    '[WARN] [raspberry-shake] UDP packets from 192.0.2.10 ignored: their date is more than a day off, check the clock (NTP) of the Shake',
+  ]);
+});

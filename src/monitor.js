@@ -217,9 +217,10 @@ export class Monitor {
     }
     const now = this.now();
     if (Math.abs(packet.time - now) > this.timings.maxClockSkewMs) {
+      // One line per sender, whatever the date of each packet.
       this.problems.fail(
-        'clock',
-        `UDP packets from ${ip} dated ${new Date(packet.time).toISOString()} ignored: check the clock (NTP) of the Shake`,
+        `clock:${ip}`,
+        `UDP packets from ${ip} ignored: their date is more than a day off, check the clock (NTP) of the Shake`,
       );
       return;
     }
@@ -227,7 +228,7 @@ export class Monitor {
       // The infrasound of a Boom alone is not a seismic stream.
       return;
     }
-    this.problems.recover('clock', 'UDP packets of the Shake dated correctly again');
+    this.problems.recover(`clock:${ip}`, `UDP packets from ${ip} dated correctly again`);
     const wasSilent = this.udp.lastAt === null || now - this.udp.lastAt > this.timings.udpOnlineMs;
     this.udp.lastAt = now;
     this.udp.receipts.push(now);
