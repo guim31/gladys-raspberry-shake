@@ -1,8 +1,8 @@
 {
-  "name": "gladys-integration-template-js",
+  "name": "gladys-raspberry-shake",
   "version": "1.0.0",
   "private": true,
-  "description": "Official starter template to build an external integration for Gladys Assistant with the JavaScript SDK.",
+  "description": "Raspberry Shake seismograph integration for Gladys Assistant: vibration level, shaking detection, station status.",
   "type": "module",
   "main": "index.js",
   "scripts": {

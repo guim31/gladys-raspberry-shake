@@ -28,8 +28,17 @@ Gladys before reporting a problem.
 
 ## Scope
 
-In scope: the code of this repository and the Docker image it publishes.
+In scope: the code of this repository and the Docker image it publishes, which runs as two
+containers: the main one (talks to Gladys) and the `receiver` sub-container (the UDP port).
+
+- **Stored data**: nothing. `/data` stays empty; the samples are analysed in memory and dropped.
+- **Secrets**: none. The integration uses no account and no API key; the station code is public.
+- **Network**: the receiver listens on one UDP port, published on the LAN on a host port chosen by
+  Gladys. Anyone on the LAN can send datagrams to it: they are capped at 200 per second and 8 KB each,
+  parsed as numbers only, and the optional "Address of the Shake" setting ignores every other sender.
+  The link between the two containers stays on the private network of the integration. Outbound, the
+  main container reaches `https://data.raspberryshake.org` only.
 
 Out of scope: Gladys Assistant itself (see its
 [security policy](https://github.com/GladysAssistant/Gladys/security/policy)),
-and the third-party services and devices the integration talks to.
+and the Raspberry Shake device and services.

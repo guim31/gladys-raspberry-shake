@@ -1,45 +1,89 @@
 // -----------------------------------------------------------------------------
-// Integration configuration.
-//
-// The configuration is filled in by the user in Gladys, from the `config_schema`
-// declared in `gladys-assistant-integration.json`. The SDK fetches it for you
-// (`gladys.getConfig()`) and notifies you of every change through
-// `gladys.onConfigUpdated()`.
-//
-// This module only provides defaults and normalizes the received object, so the
-// rest of the code never has to deal with `undefined`.
+// Integration configuration: defaults (they mirror the `default` values of the
+// manifest `config_schema`, see test/manifest.test.js) and normalization, so
+// the rest of the code never deals with strings, blanks or `undefined`.
 // -----------------------------------------------------------------------------
 
-// Defaults: they MUST stay consistent with the `default` values declared in the
-// `config_schema` of the manifest.
+export const LANGUAGES = ['en', 'fr', 'de', 'es'];
+
+// STA/LTA trigger ratios. "high" catches smaller tremors and more footsteps.
+export const SENSITIVITIES = {
+  low: { on: 6, off: 2 },
+  normal: { on: 4, off: 1.5 },
+  high: { on: 3, off: 1.5 },
+};
+
+// Minutes without data before the station is said offline. The public
+// archive of Raspberry Shake lags about 30 minutes behind real time, hence
+// one hour at least.
+export const OFFLINE_AFTER = ['60', '120', '360'];
+
 export const DEFAULT_CONFIG = {
-  latitude: 48.8566, // Paris
-  longitude: 2.3522,
-  unit: 'celsius', // 'celsius' | 'fahrenheit'
-  // Seconds between two reads of the polled sensors. Gladys polls at most once
-  // a minute: slower intervals are applied by skipping polls (see
-  // createPoller in src/devices/index.js).
-  poll_frequency: 300,
-  // Reserved key (NOT in config_schema): because the manifest declares both
-  // 'local' and 'cloud' in its `transports` field, Gladys shows a standard
-  // "Prefer the local connection" toggle and sends the user's choice here.
-  // Read-only for the integration; defaults to true.
-  GLADYS_PREFER_LOCAL: true,
+  station: '',
+  udp: true,
+  shake_ip: '',
+  sensitivity: 'normal',
+  offline_after: '60',
+  language: 'fr',
 };
 
 /**
- * Merge the user config with the defaults.
- * @param {Record<string, unknown>} raw config returned by the SDK
+ * A station code as Raspberry Shake gives it ("R155B", "S10A9"), with or
+ * without the network ("AM.R155B"), any case. Null when it is not one.
+ */
+export function parseStation(value) {
+  const text = String(value ?? '')
+    .trim()
+    .toUpperCase()
+    .replace(/^AM\./, '');
+  return /^[A-Z0-9]{4,5}$/.test(text) ? text : null;
+}
+
+/** An IPv4 address, or null. */
+export function parseIp(value) {
+  const text = String(value ?? '').trim();
+  const parts = text.split('.');
+  if (parts.length !== 4 || !parts.every((part) => /^\d{1,3}$/.test(part) && Number(part) < 256)) {
+    return null;
+  }
+  return parts.map(Number).join('.');
+}
+
+const bool = (value, fallback) => {
+  if (value === true || value === 'true') {
+    return true;
+  }
+  if (value === false || value === 'false') {
+    return false;
+  }
+  return fallback;
+};
+
+/**
+ * @param {Record<string, unknown>} raw the configuration returned by the SDK
  */
 export function normalizeConfig(raw = {}) {
+  const source = raw && typeof raw === 'object' ? raw : {};
+  const typedStation = String(source.station ?? '').trim();
+  const typedIp = String(source.shake_ip ?? '').trim();
+  const shakeIp = parseIp(typedIp);
+  const sensitivity = Object.hasOwn(SENSITIVITIES, source.sensitivity)
+    ? source.sensitivity
+    : DEFAULT_CONFIG.sensitivity;
+  const offlineAfter = OFFLINE_AFTER.includes(String(source.offline_after))
+    ? String(source.offline_after)
+    : DEFAULT_CONFIG.offline_after;
   return {
-    ...DEFAULT_CONFIG,
-    ...raw,
-    // Force the types: config may arrive as strings from a form.
-    latitude: Number(raw.latitude ?? DEFAULT_CONFIG.latitude),
-    longitude: Number(raw.longitude ?? DEFAULT_CONFIG.longitude),
-    poll_frequency: Number(raw.poll_frequency ?? DEFAULT_CONFIG.poll_frequency),
-    // The preference is a boolean; anything but an explicit false means true.
-    GLADYS_PREFER_LOCAL: raw.GLADYS_PREFER_LOCAL !== false,
+    station: parseStation(typedStation),
+    // Something was typed but is not a station code: said in the status.
+    invalidStation: typedStation !== '' && parseStation(typedStation) === null,
+    udp: bool(source.udp, DEFAULT_CONFIG.udp),
+    shakeIp,
+    // An address that does not parse lets every sender in, and says so.
+    invalidIp: typedIp !== '' && shakeIp === null,
+    sensitivity,
+    trigger: SENSITIVITIES[sensitivity],
+    offlineAfterMs: Number(offlineAfter) * 60 * 1000,
+    language: LANGUAGES.includes(source.language) ? source.language : DEFAULT_CONFIG.language,
   };
 }

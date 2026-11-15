@@ -16,8 +16,8 @@ its only runtime dependency. It started from the official JavaScript template.
 ```bash
 npm install
 npm test                                  # node --test, the built-in runner
-node --test test/devices.test.js          # one file
-node --test --test-name-pattern "plug"    # tests whose name matches
+node --test test/monitor.test.js          # one file
+node --test --test-name-pattern "archive" # tests whose name matches
 npm run lint                              # ESLint
 npm run format:check                      # Prettier, as the CI runs it
 npm run format                            # Prettier, fix in place
@@ -31,16 +31,26 @@ pushing.
 ## Architecture
 
 ```
-index.js                          SDK wiring only: handlers registered before connect()
-src/devices/index.js              registry of the device blueprints + dispatch helpers
-src/devices/<type>.js             one device type per file (buildDevice, onPoll, onSetValue...)
-src/scenes.js                     scene action handlers (manifest `scene_actions`)
-src/widgets.js                    dashboard widget handlers (manifest `widgets`)
+index.js                          main container: SDK wiring only, src/app.js registers the handlers
+src/app.js                        every SDK handler -> the monitor (also used by the tests); action check_now
+src/monitor.js                    UDP packets + public archive -> states, scene events, status, receiver restarts
+src/analysis.js                   RSAM and peak per minute, STA/LTA trigger (pure, sample time)
+src/shake.js                      UDP packet format of the Shake (parse, format), seismic channels
+src/fdsn.js                       FDSN client: station metadata, last data from miniSEED record headers
+src/device.js                     the device of the station: external ids, feature names, buildDevice
+src/link.js                       main side of the private link to the receiver (NDJSON over TCP)
+src/receiver.js                   the receiver: UDP 8888 in, raw datagrams out on TCP 8889, flood cap
+src/receiver-main.js              entry point of the `receiver` sub-container (manifest `containers`)
+src/widgets.js                    dashboard widget `station`
+src/texts.js                      connection and action texts (4 languages), dates and numbers
 src/config.js                     DEFAULT_CONFIG (mirrors the manifest defaults) + normalization
-src/weather.js                    example driver (Open-Meteo)
-gladys-assistant-integration.json manifest: name, config_schema, actions, image...
-docs/en.md, docs/fr.md            user documentation, re-hosted by Gladys (mandatory)
-test/                             node --test, against the SDK's fake Gladys (integration-sdk/testing)
+src/problems.js                   one log line per repeated failure, one at recovery
+tools/replay.js                   sends the recorded earthquake over UDP, as a Shake (manual tests)
+gladys-assistant-integration.json manifest: name, containers, config_schema, actions...
+docs/{en,fr,de,es}.md             user documentation, re-hosted by Gladys (en and fr mandatory)
+test/                             node --test, against the SDK's fake Gladys, a fake FDSN, a fake link;
+                                  test/receiver.test.js uses real sockets on the loopback interface
+test/fixtures/shake/              real recording (R6881, M3.7 of 03/08/2026), FDSN answers
 .github/scripts/release.mjs       release helpers (manifest bump, changelog), tested in test/
 ```
 
@@ -70,8 +80,9 @@ test/                             node --test, against the SDK's fake Gladys (in
   `type: "provider"`: 5.1.0). `test/manifest.test.js` ties the manifest to the
   code (defaults, action, scene and widget handlers): change both sides
   together.
-- **User-facing text** is bilingual (English and French): action messages,
-  manifest texts, and `docs/en.md` / `docs/fr.md`, kept in sync.
+- **User-facing text** exists in English, French, German and Spanish: action
+  messages, widget texts, feature names, manifest texts, and `docs/{en,fr,de,es}.md`,
+  kept in sync (`test/i18n.test.js`).
 - **Style.** Prettier formats, ESLint catches mistakes. Comments explain why,
   in English. Tests never touch the network.
 
@@ -251,3 +262,38 @@ long, et sur un « Sie »/« Ihr… » de politesse en allemand. Le store exige 
 - Docs `en`, `fr`, `de`, `es` avec les mêmes sections.
 - Chauffe, ouverture, sécurité : ne rien rendre pilotable « comme un thermostat » ou par un assistant
   vocal quand une erreur serait dangereuse (leçon d'OctoPrint).
+
+## Raspberry Shake (cette intégration)
+
+- **Sortie UDP du Shake** (Datacast, réglée sur la page web du Shake, `rs.local`, Settings → Datacast) :
+  un datagramme texte par canal toutes les 0,25 s environ à 100 sps (25 échantillons ; 50 sur les anciens
+  SHZ à 50 sps), `{'EHZ', 1785739788.538, 9866, 11560, ...}` : canal, horodatage du premier échantillon
+  (secondes Unix, 3 décimales), échantillons en counts bruts avec un décalage continu. **Pas de code de
+  station dans le paquet** : il vient de la configuration. Canaux : EHZ (géophone vertical, 1D/3D/4D/BOOM),
+  SHZ (anciens), EN? (accéléromètres du 4D), EH? horizontaux du 3D, **HDF = infrason du Boom, ignoré**.
+- **Port entrant** : le conteneur principal n'en a aucun ; sous-conteneur `receiver` (même image,
+  `command: ["node", "src/receiver-main.js"]`), UDP 8888 publié sur un port hôte choisi par Gladys, montré
+  par `{{gladys_host}}` / `{{port:shake_udp}}` dans la section d'introduction ; lien privé TCP 8889 jamais
+  publié (modèle gladys-syslog : relance du sous-conteneur après 3 échecs, au plus toutes les 5 min).
+  `gladys_version >=5.2.0` (ports des sous-conteneurs, tag v5.2.0 vérifié). `memory_mb: 96`.
+- **Analyse** (`src/analysis.js`) : moyenne glissante de 10 s retirée, RSAM = moyenne de |x| par minute
+  UTC du temps des échantillons (minute à moins de 30 s de données : rien), crête = max |x| ; STA/LTA
+  1 s / 30 s en moyennes exponentielles, LTA gelée pendant le déclenchement, 30 s de chauffe, fin après
+  10 s sous le seuil bas. Trou > 5 s : remise à zéro. Sur l'enregistrement réel (bruit ~900 counts),
+  aucun déclenchement avant le séisme pour les trois sensibilités, déclenchement à 06:49:52 (rapport 5,3).
+- **FDSN** `https://data.raspberryshake.org/fdsnws/` : `station/1/query?network=AM&station=&level=station&format=text`
+  (204 si inconnue ; EndTime vide = station ouverte) ; `dataselect/1/query` renvoie du miniSEED v2
+  (Steim2, enregistrements de 512 octets, ~3,5 s chacun à 100 sps) ou **204**. **`availability` répond 404**
+  (non servi). **Retard de l'archive ≈ 30 min** (mesuré le 15/11/2026 sur 5 stations) : d'où la fenêtre
+  de 31 min puis des sondes de 2 min plus anciennes (45, 60, 120, 360, 1440 min), et « hors ligne » au
+  plus tôt après 1 h. On ne lit que les en-têtes (début, nombre d'échantillons, facteur/multiplicateur de
+  fréquence). L'API JSON de StationView (`stationview.raspberryshake.org/query/objects.json`) n'est pas
+  documentée et ignore ses paramètres (liste mondiale) : non utilisée.
+- Unités : counts bruts (pas de conversion en vitesse ; la sensibilité, 3,6e8 counts/(m/s) pour EHZ,
+  est dans les métadonnées FDSN `level=channel`). `sismic-sensor/decimal` pour RSAM et crête, bornes
+  0 à 2^23 ; `vibration-sensor/binary` pour la secousse ; `input/binary` pour en ligne.
+- En ligne = paquet UDP depuis moins de 2 min, ou dernière donnée de l'archive plus récente que le délai
+  configuré. Au démarrage, « hors ligne » attend la première réponse de l'archive (pas de faux
+  déclencheur). `station_offline` seulement sur une transition en ligne → hors ligne.
+- Un appareil créé sans UDP n'a pas les fonctionnalités UDP : les états ne sont publiés que pour les
+  fonctionnalités présentes dans `gladys.devices` (« Mettre à jour » dans Découverte les ajoute).

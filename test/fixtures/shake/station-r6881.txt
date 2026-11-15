@@ -1,0 +1,2 @@
+#Network|Station|Latitude|Longitude|Elevation|SiteName|StartTime|EndTime
+AM|R6881|43.090090090090094|-0.03701007966977963|99.0|Raspberry Shake Citizen Science Station|2025-04-08T07:55:34.993|

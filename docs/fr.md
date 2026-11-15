@@ -1,67 +1,153 @@
-# Template de démonstration
+# Raspberry Shake
 
-Ceci est la documentation utilisateur de l'intégration. Gladys ré-héberge ce
-fichier et affiche un lien **Documentation** permanent vers lui dans l'écran
-de configuration (dans la langue de l'utilisateur, avec l'anglais en repli) —
-c'est au moment de configurer que l'utilisateur en a le plus besoin. Gardez
-les courtes indications d'accueil dans les blocs `section` du `config_schema`
-du manifest ; mettez ici le pas-à-pas détaillé (captures d'écran, dépannage…).
+Votre sismographe personnel [Raspberry Shake](https://raspberryshake.org) dans Gladys : le niveau de
+vibration du sol chez vous, minute par minute, la détection des secousses avec leur crête et leur durée,
+et l'état en ligne de la station. Fonctionne avec tous les modèles de Shake (1D, 3D, 4D, RS&BOOM).
+
+Deux sources, utilisées ensemble :
+
+- la **sortie UDP** du Shake (Datacast), envoyée directement à Gladys sur votre réseau local : les
+  échantillons en direct, à partir desquels Gladys calcule le niveau de vibration (RSAM), la crête et un
+  déclencheur STA/LTA ;
+- les **données publiques** du réseau Raspberry Shake (AM), si votre Shake partage ses données : la
+  station envoie-t-elle encore, même sans la sortie UDP.
+
+Ce n'est pas un système d'alerte précoce : un sismographe domestique sent aussi les pas, les portes, la
+machine à laver et les camions, et la détection dit que le sol a bougé, pas qu'un séisme a eu lieu. Pour
+les séismes signalés par les sismologues près de chez vous, voir l'intégration EMSC Earthquakes.
+
+Développée sans le matériel : vos retours sont les bienvenus. L'analyse a été testée sur un vrai
+enregistrement d'une station publique (le séisme de magnitude 3,7 des Pyrénées du 3 août 2026, à 5 km de
+la station AM.R6881), rejoué au format UDP du Shake ; aucun Shake physique n'a été branché. Non affiliée
+à Raspberry Shake, S.A.
 
 ## Ce que vous obtenez
 
-Six appareils de démonstration apparaissent après l'installation : une
-station météo (vraies données Open-Meteo), un interrupteur, une lampe
-variable, une prise connectée avec mesure de puissance, un détecteur de
-mouvement et une caméra.
+- Un appareil **Raspberry Shake** par station : état en ligne et dernière donnée reçue ; avec la sortie
+  UDP, niveau de vibration (RSAM, en counts), amplitude crête (en counts) et secousse détectée, avec leur
+  historique.
+- Un **widget de tableau de bord** : état de la station, niveau de vibration et crête en direct, et
+  courbe du niveau de vibration sur la dernière journée.
+- Trois **déclencheurs de scène** : secousse détectée, retour au calme (avec la crête et la durée),
+  station hors ligne.
+- Une action **Vérifier la station maintenant** dans l'écran de configuration.
+
+## Prérequis
+
+- Gladys Assistant 5.2 ou plus récent (l'intégration publie un port UDP via un sous-conteneur).
+- Un Raspberry Shake sur le même réseau que Gladys, pour la sortie UDP.
+- Un accès Internet depuis la machine Gladys pour l'état en ligne (`data.raspberryshake.org`, HTTPS).
 
 ## Configuration
 
-1. Ouvrez l'onglet **Configuration** de l'intégration.
-2. Renseignez la **latitude** et la **longitude** que la station météo de
-   démonstration doit observer (Paris par défaut), et choisissez votre unité
-   de température. L'**intervalle de rafraîchissement** règle la fréquence
-   de lecture de la station météo et de la puissance de la prise : toutes
-   les 5 minutes par défaut, toutes les minutes au plus.
-3. Enregistrez : les appareils apparaissent dans l'onglet **Découverte**,
-   prêts à être ajoutés.
+### Station et sortie UDP
 
-Le réglage **Préférer la connexion locale** pilote la prise de
-démonstration : elle affiche en badge le canal réellement utilisé (local ou
-cloud), avec un point orange quand elle fonctionne en mode dégradé (local
-refusé, bascule cloud).
+1. Trouvez le code de votre station : sur la page web de votre Shake (`http://rs.local`, ou son
+   adresse), ou sur la [carte des stations](https://stationview.raspberryshake.org). Il ressemble à
+   `R1A2B` (réseau `AM`).
+2. Dans Gladys, Intégrations → Raspberry Shake → Configuration, saisissez le code et enregistrez.
+3. Le haut de l'écran de configuration affiche l'adresse et le port UDP choisis par Gladys pour
+   l'intégration (par exemple `192.168.1.20`, port `40123`). Sur la page web du Shake, ouvrez Settings →
+   **Datacast**, ajoutez cette adresse comme hôte cible et ce port comme port cible, puis enregistrez et
+   redémarrez le producteur de données comme le Shake le demande.
+4. Créez l'appareil dans l'onglet **Découverte**.
 
-## Actions
+Le Shake envoie ses échantillons environ quatre fois par seconde et par canal : quelques kilo-octets par
+seconde sur votre réseau local. Le port est choisi par Gladys et conservé : le Shake ne se règle qu'une
+fois. Si votre Shake reçoit son adresse de votre box, une adresse fixe (réservation DHCP) permet de
+remplir **Adresse du Shake** : les paquets de tout autre appareil sont alors ignorés.
 
-- **Tester le fournisseur météo** — effectue une requête en direct vers
-  Open-Meteo et affiche la température et l'humidité actuelles sous le
-  bouton.
-- **Identifier un appareil** — choisissez un de vos appareils dans la liste
-  et il se signale (la lampe de démonstration « clignote » dans les logs).
+### Réglages
 
-## Scènes
+| Réglage                 | Défaut   | Signification                                                                      |
+| ----------------------- | -------- | ---------------------------------------------------------------------------------- |
+| Code de la station      | vide     | `R1A2B` ou `AM.R1A2B`, majuscules ou minuscules.                                   |
+| Utiliser la sortie UDP  | activé   | Désactivé : état en ligne et dernière donnée seulement, par les données publiques. |
+| Adresse du Shake        | vide     | Adresse IPv4 facultative : les paquets UDP d'une autre adresse sont ignorés.       |
+| Détection des secousses | Normale  | Rapport STA/LTA qui déclenche une détection : faible 6, normale 4, élevée 3.       |
+| Hors ligne après        | 1 heure  | Durée sans donnée avant que la station soit hors ligne (1, 2 ou 6 heures).         |
+| Langue des textes       | Français | Noms des fonctionnalités (à leur création) et dates.                               |
 
-L'intégration ajoute ses propres cartes à l'éditeur de scènes (Gladys 5.1
-ou plus récent), dans la catégorie **Intégrations** :
+## Appareil
 
-- **Mouvement détecté** (déclencheur) — lance la scène quand un détecteur
-  de démonstration voit bouger quelque chose. Choisissez éventuellement le
-  détecteur et ce qui a bougé (personne, animal) ; laissés vides, toute
-  détection correspond. Les actions suivantes peuvent lire ce qui a bougé
-  avec `{{triggerEvent.data.target}}`.
-- **Identifier un appareil** (action) — fait se signaler l'appareil choisi.
-  Elle indique si l'appareil a pu se signaler, pour que les actions
-  suivantes puissent en dépendre.
+| Fonctionnalité             | Type                 | Signification                                                                             |
+| -------------------------- | -------------------- | ----------------------------------------------------------------------------------------- |
+| Station en ligne           | binaire              | Données reçues à temps : UDP dans les 2 dernières minutes, ou données publiques récentes. |
+| Dernière donnée            | texte                | Date et heure de la dernière donnée reçue (mise à jour toutes les 10 minutes).            |
+| Niveau de vibration (RSAM) | nombre, counts       | Amplitude absolue moyenne sur chaque minute, décalage retiré.                             |
+| Amplitude crête            | nombre, counts       | Plus grande amplitude absolue de chaque minute.                                           |
+| Secousse détectée          | capteur de vibration | 1 du déclenchement jusqu'à 10 secondes de calme.                                          |
 
-## Tableau de bord
+Les trois dernières demandent la sortie UDP. Les valeurs sont en **counts**, l'unité brute du Shake :
+comparez-les au niveau habituel de votre station (la station de l'enregistrement lisait environ 900
+counts avant le séisme de magnitude 3,7, à 5 km, qui a culminé à 1,16 million). Le géophone vertical
+(EHZ) est utilisé, sinon le premier canal sismique reçu ; le canal infrason d'un Boom est ignoré.
 
-Ajoutez le widget **État de la démo** à un tableau de bord : il affiche en
-direct la température de la station météo et la puissance de la prise du
-bureau, la connexion utilisée par la prise (en orange si dégradée) et la
-position observée. Son bouton **Identifier la lampe** fait se signaler la
-lampe de démonstration.
+La **détection** compare l'amplitude moyenne sur 1 seconde à la moyenne sur 30 secondes (STA/LTA), le
+déclencheur classique de la sismologie : elle démarre au rapport choisi et se termine après 10 secondes
+sous 1,5 (2 en sensibilité faible). La moyenne longue demande 30 secondes de données après un démarrage
+ou une coupure.
+
+## Widget de tableau de bord
+
+Ajoutez le widget **Raspberry Shake** à un tableau de bord : nom de la station, niveau de vibration et
+crête en direct, courbe du niveau de vibration sur 24 heures (masquable dans les réglages du widget), et
+un bloc d'état (en ligne, dernière donnée, sol calme ou secousse, paquets UDP de la dernière minute).
+Sans la sortie UDP, seul le bloc d'état est affiché.
+
+## Déclencheurs de scène
+
+- **Secousse détectée** : le déclencheur s'est activé. Variables : le code de la station et le rapport
+  STA/LTA.
+- **Retour au calme** : la secousse est terminée. Variables : la station, l'amplitude crête (counts) et
+  la durée (secondes). La crête permet de distinguer un pas d'un séisme dans une condition de scène.
+- **Station hors ligne** : la station était en ligne et aucune donnée n'est arrivée dans le délai
+  configuré. Variables : la station et la date de la dernière donnée.
+
+La fonctionnalité **Secousse détectée** de l'appareil peut aussi servir de déclencheur d'appareil
+classique.
+
+## Exemples de scènes
+
+- Quand **Retour au calme** se déclenche, si la crête dépasse largement votre niveau habituel,
+  envoyez-vous un message avec la crête et la durée.
+- Quand **Station hors ligne** se déclenche, envoyez un message : le Shake a peut-être perdu son
+  alimentation ou son réseau.
+- Chaque soir, lisez le niveau de vibration de la journée sur la courbe pour voir la circulation, le
+  vent et l'activité de la maison.
+
+## Sources des données, conditions et quotas
+
+- Sortie UDP : les échantillons ne quittent jamais votre réseau local ; rien n'est stocké, l'analyse se
+  fait en mémoire.
+- Données publiques : les services web FDSN de Raspberry Shake
+  (`https://data.raspberryshake.org/fdsnws/`), gratuits et sans compte, pour les stations qui partagent
+  leurs données. L'intégration ne lit que les en-têtes de quelques kilo-octets de données toutes les 10
+  minutes (une fenêtre courte, puis des sondages étroits plus anciens quand la station se tait).
+  L'archive a environ 30 minutes de retard sur le temps réel, d'où le minimum d'une heure avant « hors
+  ligne ». Citation du réseau : Raspberry Shake, S.A. (2016), Raspberry Shake [Data set], International
+  Federation of Digital Seismograph Networks, https://doi.org/10.7914/SN/AM.
 
 ## Dépannage
 
-L'intégration journalise tout ce qu'elle fait : consultez les logs de
-l'intégration depuis l'interface Gladys (ou `docker logs` sur l'hôte) avec
-`LOG_LEVEL=debug` pour le détail complet.
+- **« Aucune donnée UDP du Shake »** : vérifiez la cible Datacast (l'adresse et le port affichés dans
+  l'écran de configuration, pas le port 8888), que le producteur de données a bien redémarré, et
+  qu'aucun pare-feu de la machine Gladys ne bloque l'UDP entrant. Si une adresse du Shake est indiquée,
+  vérifiez-la : les logs disent une fois quelle adresse a été ignorée.
+- **« La station n'est pas sur le réseau Raspberry Shake »** : le code est faux, ou le Shake ne partage
+  pas ses données. La sortie UDP fonctionne quand même.
+- **Beaucoup de détections** : les pas et les portes près du Shake déclenchent en sensibilité élevée :
+  choisissez normale ou faible, ou posez le Shake au sol d'une pièce calme.
+- **L'écran de configuration affiche `{{port:shake_udp}}`** : le récepteur n'a pas encore démarré ;
+  rechargez la page après quelques secondes.
+- Logs : Intégrations → Raspberry Shake → Supervision ; `LOG_LEVEL=debug` affiche chaque minute et
+  chaque détection.
+
+## Limites
+
+- Une station par Gladys. Les counts ne sont pas convertis en vitesse du sol, et aucune magnitude n'est
+  calculée : un sismographe domestique seul ne peut pas localiser un séisme.
+- La détection est un simple déclencheur STA/LTA sur un canal, sans filtre : elle dit que le sol a
+  tremblé près du Shake, quelle qu'en soit la cause.
+- L'état en ligne sans UDP demande une station qui partage ses données sur le réseau, et arrive avec 30
+  minutes de retard environ.
