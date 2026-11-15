@@ -10,7 +10,8 @@
 //
 // Nothing is kept: without the main container, packets are dropped (the data
 // is real time, a late packet is useless). A flood is capped: a Shake sends
-// about 4 packets per second and per channel, 20 at most.
+// about 4 packets per second and per channel, 20 at most: 40 per sender and
+// 200 in all are kept each second.
 // -----------------------------------------------------------------------------
 
 import dgram from 'node:dgram';
@@ -21,8 +22,11 @@ const logger = createLogger({ name: 'shake-receiver' });
 
 export const UDP_PORT = 8888;
 export const LINK_PORT = 8889;
-// Datagrams per second, every sender together.
+// Datagrams per second, every sender together, and per sender (a Shake sends
+// 4 per channel, 20 at most): one chatty device cannot starve the Shake.
 export const MAX_RATE = 200;
+export const MAX_RATE_PER_IP = 40;
+const MAX_SENDERS = 256;
 export const MAX_DATAGRAM = 8192;
 // Beyond this many bytes waiting on the link, packets are dropped.
 const LINK_HIGH_WATER = 256 * 1024;
@@ -35,6 +39,7 @@ export class Receiver {
     this.second = 0;
     this.count = 0;
     this.dropped = 0;
+    this.perIp = new Map();
   }
 
   async start() {
@@ -80,8 +85,8 @@ export class Receiver {
     ]);
   }
 
-  /** Counts the datagrams of the current second; false beyond the cap. */
-  admit() {
+  /** Counts the datagrams of the current second; false beyond a cap. */
+  admit(ip) {
     const second = Math.floor(this.now() / 1000);
     if (second !== this.second) {
       if (this.dropped > 0) {
@@ -90,9 +95,14 @@ export class Receiver {
       this.second = second;
       this.count = 0;
       this.dropped = 0;
+      this.perIp.clear();
     }
     this.count += 1;
-    if (this.count > MAX_RATE) {
+    const fromIp = (this.perIp.get(ip) ?? 0) + 1;
+    if (this.perIp.size < MAX_SENDERS || this.perIp.has(ip)) {
+      this.perIp.set(ip, fromIp);
+    }
+    if (this.count > MAX_RATE || fromIp > MAX_RATE_PER_IP) {
       this.dropped += 1;
       return false;
     }
@@ -100,7 +110,7 @@ export class Receiver {
   }
 
   receive(data, ip) {
-    if (data.length === 0 || data.length > MAX_DATAGRAM || !this.admit()) {
+    if (data.length === 0 || data.length > MAX_DATAGRAM || !this.admit(ip)) {
       return;
     }
     const link = this.link;

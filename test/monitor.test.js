@@ -264,3 +264,53 @@ test('a packet as the receiver sends it is the text of the Shake', () => {
   const [packet] = packetsOf(RECORDING, { to: 1 });
   assert.match(formatPacket(packet), /^\{'EHZ', 1785739708\.538, 9866, 11560, /);
 });
+
+test('a station changed during a read of the archive gets nothing of the old one', async (t) => {
+  const archive = createArchive({ lastData: RECORDING.start - 30 * MIN });
+  const w = await world(t, { config: { station: STATION, udp: false }, archive });
+  let release;
+  const gate = new Promise((resolve) => (release = resolve));
+  const fetch = archive.fetch;
+  archive.fetch = async (url) => (await gate, fetch(url));
+  w.monitor.fdsn.fetch = archive.fetch;
+  const reading = w.monitor.checkArchive(true);
+  const changing = w.fake.configUpdated({ station: 'R7482', udp: false });
+  release();
+  await Promise.all([reading, changing]);
+  await settle();
+  assert.equal(w.monitor.config.station, 'R7482');
+  assert.equal(w.monitor.archive.lastData, null);
+  assert.equal(w.monitor.archive.known, false);
+});
+
+test('UDP turned off then on: no false "no UDP data", shaking ended for the old station', async (t) => {
+  const w = await world(t);
+  await create(w);
+  await replay(w, packetsOf(RECORDING, { to: 100 }));
+  assert.equal(w.monitor.shaking, 1);
+  await w.fake.configUpdated({ station: STATION, udp: false });
+  await settle();
+  assert.equal(w.fake.sceneEvents.at(-1).key, TRIGGERS.CALM);
+  await tick(w, 3600);
+  await w.fake.configUpdated({ station: STATION, udp: true });
+  await settle();
+  assert.doesNotMatch(w.fake.connectionStatus.message?.en ?? '', /No UDP data/);
+  const other = await world(t);
+  await replay(other, packetsOf(RECORDING, { to: 100 }));
+  await other.fake.configUpdated({ station: 'R7482' });
+  await settle();
+  const ended = other.fake.sceneEvents.at(-1);
+  assert.equal(ended.key, TRIGGERS.CALM);
+  assert.equal(ended.data.station, STATION);
+});
+
+test('packets dated far from the clock of Gladys are ignored', async (t) => {
+  const w = await world(t);
+  const [packet] = packetsOf(RECORDING, { to: 1 });
+  w.link.emit('packet', {
+    ip: SHAKE_IP,
+    data: formatPacket({ ...packet, time: packet.time - 2 * 3600_000 }),
+  });
+  await settle();
+  assert.equal(w.monitor.udp.lastAt, null);
+});

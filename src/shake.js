@@ -15,6 +15,8 @@ export const SEISMIC_CHANNELS = ['EHZ', 'SHZ', 'ENZ', 'EHN', 'EHE', 'ENN', 'ENE'
 
 // Real packets hold 25 to 50 samples; more is not a Shake.
 export const MAX_SAMPLES = 1000;
+// The digitizer of a Shake has 24 bits: no count goes beyond 2^24.
+export const MAX_ABS_COUNT = 2 ** 24;
 
 /**
  * @param {string|Buffer} data one datagram
@@ -41,10 +43,11 @@ export function parsePacket(data) {
   const samples = [];
   for (const part of parts.slice(2)) {
     const value = part.trim();
-    if (!/^-?\d+$/.test(value)) {
+    const number = Number(value);
+    if (!/^-?\d{1,9}$/.test(value) || Math.abs(number) > MAX_ABS_COUNT) {
       return null;
     }
-    samples.push(Number(value));
+    samples.push(number);
   }
   return { channel, time: Math.round(seconds * 1000), samples };
 }

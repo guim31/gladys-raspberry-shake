@@ -79,3 +79,8 @@ test('errors of the service are FdsnError, without the address of the house', as
   archive.down = 'network';
   await assert.rejects(client.lastData(STATION, NOW), /data.raspberryshake.org: ECONNREFUSED/);
 });
+
+test('a 404 on the station metadata is an error, not an unknown station', async () => {
+  const client = new FdsnClient({ fetch: async () => ({ status: 404, text: async () => '' }) });
+  await assert.rejects(client.station(STATION), /HTTP 404/);
+});

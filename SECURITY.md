@@ -34,7 +34,8 @@ containers: the main one (talks to Gladys) and the `receiver` sub-container (the
 - **Stored data**: nothing. `/data` stays empty; the samples are analysed in memory and dropped.
 - **Secrets**: none. The integration uses no account and no API key; the station code is public.
 - **Network**: the receiver listens on one UDP port, published on the LAN on a host port chosen by
-  Gladys. Anyone on the LAN can send datagrams to it: they are capped at 200 per second and 8 KB each,
+  Gladys. Anyone on the LAN can send datagrams to it: they are capped at 40 per second per sender, 200 in all,
+  and 8 KB each, samples bounded to 24 bits,
   parsed as numbers only, and the optional "Address of the Shake" setting ignores every other sender.
   The link between the two containers stays on the private network of the integration. Outbound, the
   main container reaches `https://data.raspberryshake.org` only.

@@ -87,7 +87,7 @@ export class FdsnClient {
     this.requests = 0;
   }
 
-  async get(path, params) {
+  async get(path, params, { notFoundIsEmpty = true } = {}) {
     const url = `${this.base}/${path}?${new URLSearchParams(params)}`;
     this.requests += 1;
     let response;
@@ -99,7 +99,7 @@ export class FdsnClient {
     } catch (err) {
       throw new FdsnError(`data.raspberryshake.org: ${err.cause?.code ?? err.message}`);
     }
-    if (response.status === 204 || response.status === 404) {
+    if (response.status === 204 || (notFoundIsEmpty && response.status === 404)) {
       return null;
     }
     if (response.status !== 200) {
@@ -113,12 +113,17 @@ export class FdsnClient {
    * `open` is false when its last epoch has an end time (retired station).
    */
   async station(code) {
-    const response = await this.get('station/1/query', {
-      network: NETWORK,
-      station: code,
-      level: 'station',
-      format: 'text',
-    });
+    const response = await this.get(
+      'station/1/query',
+      {
+        network: NETWORK,
+        station: code,
+        level: 'station',
+        format: 'text',
+        // An unknown station is a 204: a 404 is a hiccup of the server, not a verdict.
+      },
+      { notFoundIsEmpty: false },
+    );
     if (!response) {
       return null;
     }

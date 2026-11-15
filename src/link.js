@@ -42,6 +42,9 @@ export class ReceiverLink extends EventEmitter {
     this.stopped = true;
     clearTimeout(this.timer);
     this.socket?.destroy();
+    this.connected = false;
+    this.failures = 0;
+    this.delay = this.minDelayMs;
   }
 
   connect() {
@@ -75,11 +78,12 @@ export class ReceiverLink extends EventEmitter {
       this.lastError = err;
     });
     socket.on('close', () => {
-      const wasConnected = this.connected;
-      this.connected = false;
+      // A late close of an old socket says nothing about the current one.
       if (this.socket !== socket || this.stopped) {
         return;
       }
+      const wasConnected = this.connected;
+      this.connected = false;
       this.failures += 1;
       this.emit('down', { wasConnected, failures: this.failures, error: this.lastError });
       this.timer = setTimeout(() => this.connect(), this.delay);

@@ -6,7 +6,7 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import dgram from 'node:dgram';
 import { ReceiverLink } from '../src/link.js';
-import { MAX_RATE, Receiver } from '../src/receiver.js';
+import { MAX_RATE_PER_IP, Receiver } from '../src/receiver.js';
 import { formatPacket } from '../src/shake.js';
 import { RECORDING, packetsOf } from './helpers/world.js';
 
@@ -60,16 +60,26 @@ test('the datagrams of the Shake reach the main container, as they are', async (
 test('a flood is capped, and nothing is kept while the main container is away', async (t) => {
   let now = 1_000_000;
   const { receiver, link, packets, send } = await setup(t, { now: () => now });
-  for (let i = 0; i < MAX_RATE + 50; i += 1) {
+  // One sender is capped on its own.
+  for (let i = 0; i < MAX_RATE_PER_IP + 50; i += 1) {
     await send(`{'EHZ', 1.0, ${i}}`);
   }
-  await until(() => receiver.count === MAX_RATE + 50, 'every datagram counted');
-  await until(() => packets.length === MAX_RATE, 'the capped packets');
+  await until(() => receiver.count === MAX_RATE_PER_IP + 50, 'every datagram counted');
+  await until(() => packets.length === MAX_RATE_PER_IP, 'the capped packets');
   assert.equal(receiver.dropped, 50);
   link.stop();
   await until(() => !receiver.link, 'the link closed');
   now += 1000;
   await send("{'EHZ', 2.0, 1}");
   await until(() => receiver.count === 1, 'the datagram counted');
-  assert.equal(packets.length, MAX_RATE);
+  assert.equal(packets.length, MAX_RATE_PER_IP);
+});
+
+test('a chatty sender does not starve another one', () => {
+  const receiver = new Receiver({ now: () => 5_000 });
+  for (let i = 0; i < 100; i += 1) {
+    receiver.admit('198.51.100.7');
+  }
+  assert.equal(receiver.admit('192.0.2.10'), true);
+  assert.equal(receiver.admit('198.51.100.7'), false);
 });

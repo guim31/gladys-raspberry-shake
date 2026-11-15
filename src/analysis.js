@@ -33,12 +33,22 @@ export const GAP_MS = 5000;
 // by any after this long.
 export const CHANNEL_SILENCE_MS = 10_000;
 
+// Consecutive late packets that mean the clock of the stream went back (an
+// NTP step, a reboot, a spoofed future packet): the filters restart.
+export const LATE_RESYNC = 3;
+
 const RATES = [50, 100, 200];
 const MINUTE = 60_000;
 
 /** The nearest usual sample rate. */
 function roundRate(rate) {
   return RATES.reduce((best, r) => (Math.abs(r - rate) < Math.abs(best - rate) ? r : best));
+}
+
+/** A usual rate when `measured` is within 10 % of one, else null. */
+function usualRate(measured) {
+  const rate = roundRate(measured);
+  return Math.abs(measured - rate) <= rate * 0.1 ? rate : null;
 }
 
 export class Analyzer {
@@ -53,6 +63,9 @@ export class Analyzer {
   /** Forgets the filters (a gap, another channel): the next samples warm up again. */
   reset() {
     this.rate = 100;
+    this.rateKnown = false; // measured once per reset, then kept
+    this.rateCandidate = null;
+    this.late = 0; // consecutive late packets
     this.expected = null; // time of the next sample, ms
     this.mean = null;
     this.sta = 0;
@@ -79,21 +92,35 @@ export class Analyzer {
       return events;
     }
     const { time, samples } = packet;
+    if (!samples.every(Number.isFinite)) {
+      return events;
+    }
     if (this.expected !== null) {
       const drift = time - this.expected;
-      if (drift < -this.period() * samples.length) {
-        // A late or repeated packet (UDP does not keep the order): dropped.
-        return events;
-      }
-      if (drift > GAP_MS) {
+      if (drift < -this.period() / 2) {
+        // A late, repeated or overlapping packet (UDP does not keep the
+        // order): dropped, unless the stream itself went back in time.
+        this.late += 1;
+        if (this.late < LATE_RESYNC) {
+          return events;
+        }
         this.end(events, this.expected);
         this.reset();
-      } else if (this.lastPacket && time > this.lastPacket.time) {
-        // The rate, from the spacing of consecutive packets.
-        const measured = (this.lastPacket.count * 1000) / (time - this.lastPacket.time);
-        this.rate = roundRate(measured);
+      } else if (drift > GAP_MS) {
+        this.end(events, this.expected);
+        this.reset();
+      } else if (!this.rateKnown && this.lastPacket && time > this.lastPacket.time) {
+        // The rate, from the spacing of consecutive packets: kept once two
+        // spacings in a row agree (a lost packet doubles one of them).
+        const measured = usualRate((this.lastPacket.count * 1000) / (time - this.lastPacket.time));
+        if (measured !== null && measured === this.rateCandidate) {
+          this.rate = measured;
+          this.rateKnown = true;
+        }
+        this.rateCandidate = measured;
       }
     }
+    this.late = 0;
     this.lastPacket = { time, count: samples.length };
     const period = this.period();
     if (this.mean === null) {
@@ -166,7 +193,7 @@ export class Analyzer {
     const { start, sum, count, peak } = this.minute;
     this.minute = null;
     // A minute mostly missing (start of the stream, a gap) says nothing.
-    if (count < this.rate * 30) {
+    if (count < this.rate * 30 || !Number.isFinite(sum) || !Number.isFinite(peak)) {
       return;
     }
     events.push({

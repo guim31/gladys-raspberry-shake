@@ -127,3 +127,31 @@ test('the vertical geophone is preferred, the infrasound channel ignored', () =>
   analyzer.push({ ...first, channel: 'EHN', time: first.time + 20_000 });
   assert.equal(analyzer.channel, 'EHN');
 });
+
+test('an absurd sample is refused: the filters never become NaN', () => {
+  assert.equal(parsePacket(`{'EHZ', 1785739708.538, 5, 1${'0'.repeat(400)}, 7}`), null);
+  assert.equal(parsePacket("{'EHZ', 1785739708.538, 5, 16777217}"), null);
+  const analyzer = new Analyzer();
+  analyzer.push({ channel: 'EHZ', time: RECORDING.start, samples: [1, Infinity, 3] });
+  const events = run(analyzer, packetsOf());
+  assert.ok(events.filter((e) => e.type === 'minute').every((e) => Number.isFinite(e.rsam)));
+  assert.equal(events.filter((e) => e.type === 'on').length, 1);
+});
+
+test('a packet from the future does not block the real stream for long', () => {
+  const analyzer = new Analyzer();
+  const packets = packetsOf();
+  run(analyzer, packets.slice(0, 40));
+  analyzer.push({ ...packets[40], time: packets[40].time + 3600_000 });
+  run(analyzer, packets.slice(41));
+  // Three late packets, then the filters follow the real stream again.
+  assert.ok(Math.abs(analyzer.expected - packets.at(-1).time) <= 250);
+});
+
+test('a lost packet does not change the sample rate', () => {
+  const analyzer = new Analyzer();
+  const packets = packetsOf(RECORDING, { to: 20 });
+  run(analyzer, [packets[0], packets[2], ...packets.slice(3)]);
+  assert.equal(analyzer.rate, 100);
+  assert.equal(analyzer.rateKnown, true);
+});

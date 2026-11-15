@@ -34,6 +34,10 @@ export const DEFAULT_TIMINGS = {
   // UDP: online while packets come; the status complains after this long.
   udpOnlineMs: 2 * 60 * 1000,
   noUdpStatusMs: 5 * 60 * 1000,
+  // Packets this far from the clock of Gladys are not believed.
+  maxClockSkewMs: 60 * 60 * 1000,
+  // An unknown station is asked again this often.
+  unknownRecheckMs: 60 * 60 * 1000,
   // A trigger still on when the packets stop ends after this long.
   shakingStaleMs: 30_000,
   lastDataEveryMs: 10 * 60 * 1000,
@@ -68,7 +72,13 @@ export class Monitor {
   resetStation() {
     this.analyzer = new Analyzer(this.config?.trigger);
     this.udp = { lastAt: null, receipts: [], channel: null, ignored: new Set() };
-    this.archive = { known: undefined, lastData: null, checkedAt: -Infinity, checking: null };
+    this.archive = {
+      known: undefined,
+      knownAt: -Infinity,
+      lastData: null,
+      checkedAt: -Infinity,
+      checking: null,
+    };
     this.online = null;
     this.shaking = 0;
     this.rsam = null;
@@ -111,20 +121,28 @@ export class Monitor {
 
   async reconfigure(config, { quiet = false } = {}) {
     const previous = this.config;
+    const stationChanged = previous?.station !== config.station;
+    if (previous?.station && (stationChanged || !config.udp)) {
+      // Back to calm for the old station, or for the UDP output turned off.
+      await this.endShaking(this.now());
+    }
     this.config = config;
     if (!quiet) {
       logger.info('Configuration saved');
       this.warnAboutConfig();
     }
-    if (previous?.station !== config.station) {
+    if (stationChanged) {
       this.resetStation();
+    } else if (config.udp && !previous?.udp) {
+      // The UDP output turned on again: its silence counts from now.
+      this.udp.lastAt = null;
+      this.udpSince = this.now();
     }
     this.analyzer.setTrigger(config.trigger);
     if (config.udp) {
       this.link.start();
     } else {
       this.link.stop();
-      await this.endShaking(this.now());
     }
     this.statusKey = undefined;
     await this.publishDiscovered();
@@ -197,6 +215,10 @@ export class Monitor {
       return;
     }
     const now = this.now();
+    if (Math.abs(packet.time - now) > this.timings.maxClockSkewMs) {
+      logger.debug(`Packet from ${ip} dated ${new Date(packet.time).toISOString()}: ignored`);
+      return;
+    }
     const wasSilent = this.udp.lastAt === null || now - this.udp.lastAt > this.timings.udpOnlineMs;
     this.udp.lastAt = now;
     this.udp.receipts.push(now);
@@ -285,12 +307,18 @@ export class Monitor {
     if (!force && now - this.archive.checkedAt < this.timings.fdsnMs) {
       return;
     }
-    this.archive.checkedAt = now;
-    this.archive.checking = (async () => {
+    // A station change during the read replaces this.archive: the answer
+    // then goes to the old object, never to the new station.
+    const archive = this.archive;
+    archive.checkedAt = now;
+    archive.checking = (async () => {
       try {
-        if (this.archive.known === undefined || force) {
+        const recheck =
+          archive.known === false && now - archive.knownAt >= this.timings.unknownRecheckMs;
+        if (archive.known === undefined || force || recheck) {
           const info = await this.fdsn.station(station);
-          this.archive.known = info !== null;
+          archive.known = info !== null;
+          archive.knownAt = now;
           if (!info) {
             this.problems.fail(
               'unknown',
@@ -300,34 +328,44 @@ export class Monitor {
             this.problems.recover('unknown');
           }
         }
-        if (this.archive.known) {
-          this.archive.lastData = await this.fdsn.lastData(station, now, this.archive.lastData);
+        if (archive.known) {
+          archive.lastData = await this.fdsn.lastData(station, now, archive.lastData);
         }
         this.problems.recover('fdsn', 'The Raspberry Shake data service answers again');
-        this.archive.failing = false;
+        archive.failing = false;
       } catch (err) {
-        this.archive.failing = true;
+        archive.failing = true;
         this.problems.fail('fdsn', `Raspberry Shake data service unreachable: ${err.message}`);
       } finally {
-        this.archive.checking = null;
+        archive.checking = null;
       }
     })();
-    return this.archive.checking;
+    return archive.checking;
   }
 
   // --- Evaluation ------------------------------------------------------------------
 
   /** When the last data came, by UDP or in the archive (ms), or null. */
   lastData() {
-    const times = [this.udp.lastAt, this.archive.lastData].filter((time) => time !== null);
+    const udp = this.config?.udp ? this.udp.lastAt : null;
+    const times = [udp, this.archive.lastData].filter((time) => time !== null);
     return times.length ? Math.max(...times) : null;
   }
 
   isOnline(now = this.now()) {
-    const udpFresh = this.udp.lastAt !== null && now - this.udp.lastAt <= this.timings.udpOnlineMs;
+    const udpFresh = this.udpFresh(now);
     const archiveFresh =
       this.archive.lastData !== null && now - this.archive.lastData <= this.config.offlineAfterMs;
     return udpFresh || archiveFresh;
+  }
+
+  /** A UDP packet came lately (and the UDP output is used). */
+  udpFresh(now = this.now()) {
+    return (
+      Boolean(this.config?.udp) &&
+      this.udp.lastAt !== null &&
+      now - this.udp.lastAt <= this.timings.udpOnlineMs
+    );
   }
 
   /** The timer: archive when due, online state, UDP silence, states. */
@@ -398,7 +436,8 @@ export class Monitor {
       });
     }
     if (this.config.udp) {
-      if (this.rsam !== null) {
+      // Stale levels are not kept alive by the heartbeat once the UDP stops.
+      if (this.rsam !== null && this.udpFresh(now)) {
         states.push({ device_feature_external_id: ids.rsam, state: this.rsam });
         states.push({ device_feature_external_id: ids.peak, state: this.peak });
       }
