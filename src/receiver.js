@@ -97,15 +97,16 @@ export class Receiver {
       this.dropped = 0;
       this.perIp.clear();
     }
-    this.count += 1;
     const fromIp = (this.perIp.get(ip) ?? 0) + 1;
     if (this.perIp.size < MAX_SENDERS || this.perIp.has(ip)) {
       this.perIp.set(ip, fromIp);
     }
-    if (this.count > MAX_RATE || fromIp > MAX_RATE_PER_IP) {
+    // The sender over its own cap does not use the global one.
+    if (fromIp > MAX_RATE_PER_IP || this.count >= MAX_RATE) {
       this.dropped += 1;
       return false;
     }
+    this.count += 1;
     return true;
   }
 

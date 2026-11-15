@@ -37,7 +37,8 @@ export const CHANNEL_SILENCE_MS = 10_000;
 // NTP step, a reboot, a spoofed future packet): the filters restart.
 export const LATE_RESYNC = 3;
 
-const RATES = [50, 100, 200];
+// Every Shake samples at 50 or 100 sps.
+const RATES = [50, 100];
 const MINUTE = 60_000;
 
 /** The nearest usual sample rate. */

@@ -64,7 +64,10 @@ test('a flood is capped, and nothing is kept while the main container is away', 
   for (let i = 0; i < MAX_RATE_PER_IP + 50; i += 1) {
     await send(`{'EHZ', 1.0, ${i}}`);
   }
-  await until(() => receiver.count === MAX_RATE_PER_IP + 50, 'every datagram counted');
+  await until(
+    () => receiver.count + receiver.dropped === MAX_RATE_PER_IP + 50,
+    'every datagram counted',
+  );
   await until(() => packets.length === MAX_RATE_PER_IP, 'the capped packets');
   assert.equal(receiver.dropped, 50);
   link.stop();
@@ -75,11 +78,13 @@ test('a flood is capped, and nothing is kept while the main container is away', 
   assert.equal(packets.length, MAX_RATE_PER_IP);
 });
 
-test('a chatty sender does not starve another one', () => {
+test('a flooding sender does not starve another one', () => {
   const receiver = new Receiver({ now: () => 5_000 });
-  for (let i = 0; i < 100; i += 1) {
+  for (let i = 0; i < 1000; i += 1) {
     receiver.admit('198.51.100.7');
   }
-  assert.equal(receiver.admit('192.0.2.10'), true);
+  for (let i = 0; i < 5; i += 1) {
+    assert.equal(receiver.admit('192.0.2.10'), true);
+  }
   assert.equal(receiver.admit('198.51.100.7'), false);
 });

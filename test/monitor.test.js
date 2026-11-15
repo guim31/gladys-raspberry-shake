@@ -309,8 +309,22 @@ test('packets dated far from the clock of Gladys are ignored', async (t) => {
   const [packet] = packetsOf(RECORDING, { to: 1 });
   w.link.emit('packet', {
     ip: SHAKE_IP,
-    data: formatPacket({ ...packet, time: packet.time - 2 * 3600_000 }),
+    data: formatPacket({ ...packet, time: packet.time - 2 * 86_400_000 }),
   });
   await settle();
   assert.equal(w.monitor.udp.lastAt, null);
+});
+
+test('a Shake a few hours off is still heard; the infrasound alone is not a stream', async (t) => {
+  const w = await world(t);
+  const [packet] = packetsOf(RECORDING, { to: 1 });
+  w.link.emit('packet', { ip: SHAKE_IP, data: formatPacket({ ...packet, channel: 'HDF' }) });
+  await settle();
+  assert.equal(w.monitor.udp.lastAt, null);
+  w.link.emit('packet', {
+    ip: SHAKE_IP,
+    data: formatPacket({ ...packet, time: packet.time - 5 * 3600_000 }),
+  });
+  await settle();
+  assert.notEqual(w.monitor.udp.lastAt, null);
 });

@@ -15,7 +15,7 @@ import { Analyzer } from './analysis.js';
 import { buildDevice, deviceIds } from './device.js';
 import { FdsnClient } from './fdsn.js';
 import { ProblemLog } from './problems.js';
-import { parsePacket } from './shake.js';
+import { SEISMIC_CHANNELS, parsePacket } from './shake.js';
 import { CHECK, STATUS, formatDate, join, render } from './texts.js';
 
 const logger = createLogger({ name: 'raspberry-shake' });
@@ -35,7 +35,8 @@ export const DEFAULT_TIMINGS = {
   udpOnlineMs: 2 * 60 * 1000,
   noUdpStatusMs: 5 * 60 * 1000,
   // Packets this far from the clock of Gladys are not believed.
-  maxClockSkewMs: 60 * 60 * 1000,
+  // (a Shake without RTC nor NTP can be hours off: a day is tolerated).
+  maxClockSkewMs: 24 * 60 * 60 * 1000,
   // An unknown station is asked again this often.
   unknownRecheckMs: 60 * 60 * 1000,
   // A trigger still on when the packets stop ends after this long.
@@ -216,9 +217,17 @@ export class Monitor {
     }
     const now = this.now();
     if (Math.abs(packet.time - now) > this.timings.maxClockSkewMs) {
-      logger.debug(`Packet from ${ip} dated ${new Date(packet.time).toISOString()}: ignored`);
+      this.problems.fail(
+        'clock',
+        `UDP packets from ${ip} dated ${new Date(packet.time).toISOString()} ignored: check the clock (NTP) of the Shake`,
+      );
       return;
     }
+    if (!SEISMIC_CHANNELS.includes(packet.channel)) {
+      // The infrasound of a Boom alone is not a seismic stream.
+      return;
+    }
+    this.problems.recover('clock', 'UDP packets of the Shake dated correctly again');
     const wasSilent = this.udp.lastAt === null || now - this.udp.lastAt > this.timings.udpOnlineMs;
     this.udp.lastAt = now;
     this.udp.receipts.push(now);

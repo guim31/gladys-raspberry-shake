@@ -298,8 +298,8 @@ long, et sur un « Sie »/« Ihr… » de politesse en allemand. Le store exige 
 - Un appareil créé sans UDP n'a pas les fonctionnalités UDP : les états ne sont publiés que pour les
   fonctionnalités présentes dans `gladys.devices` (« Mettre à jour » dans Découverte les ajoute).
 - **Robustesse du flux** (relecture du 15/11/2026) : échantillon hors 24 bits refusé (un seul `Infinity`
-  rendait les filtres NaN pour toujours) ; paquet daté à plus d'1 h de l'horloge de Gladys ignoré ; 3
+  rendait les filtres NaN pour toujours) ; paquet daté à plus de 24 h de l'horloge de Gladys ignoré (avertissement unique) ; 3
   paquets « en retard » d'affilée = l'horloge du flux a reculé → remise à zéro (sinon un seul paquet
-  du futur bloquait tout) ; doublon ou chevauchement (dérive < −½ période) jeté ; fréquence gardée quand
+  du futur bloquait tout) ; doublon ou chevauchement (dérive < −½ période) jeté ; fréquence (50 ou 100 sps) gardée quand
   deux écarts successifs concordent (un paquet perdu double l'écart). Récepteur : 40 datagrammes/s par
   émetteur, 200 en tout. Un 404 sur `station/1/query` est une erreur, pas une station inconnue (204).
