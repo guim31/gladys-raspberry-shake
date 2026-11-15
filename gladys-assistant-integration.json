@@ -1,177 +1,462 @@
 {
   "manifest_version": 1,
   "type": "device",
-  "name": "Demo Devices Template",
+  "name": "Raspberry Shake",
   "description": {
-    "en": "Starter template showing sensors, a switch, a dimmable light and a smart plug.",
-    "fr": "Template de démarrage : capteurs, interrupteur, lampe variable et prise connectée."
+    "en": "Your Raspberry Shake seismograph: vibration level, shaking detection and station status.",
+    "fr": "Votre sismographe Raspberry Shake : niveau de vibration, détection de secousses, état de la station.",
+    "de": "Dein Raspberry-Shake-Seismograf: Vibrationspegel, Erkennung von Erschütterungen, Stationsstatus.",
+    "es": "Su sismógrafo Raspberry Shake: nivel de vibración, detección de sacudidas y estado de la estación."
   },
   "version": "1.0.0",
-  "docker_image": "ghcr.io/gladysassistant/integration-template-js:1.0.0",
-  "gladys_version": ">=5.1.0",
-  "cover_image": "https://raw.githubusercontent.com/GladysAssistant/integration-template-js/master/cover.png",
-  "categories": ["lighting", "security", "environment"],
-  "transports": ["local", "cloud"],
+  "docker_image": "ghcr.io/guim31/gladys-raspberry-shake:1.0.0",
+  "gladys_version": ">=5.2.0",
+  "cover_image": "https://raw.githubusercontent.com/guim31/gladys-raspberry-shake/main/cover.png",
+  "categories": ["environment", "security"],
+  "transports": ["local"],
+  "containers": [
+    {
+      "name": "receiver",
+      "docker_image": "ghcr.io/guim31/gladys-raspberry-shake:1.0.0",
+      "start": "auto",
+      "command": ["node", "src/receiver-main.js"],
+      "memory_mb": 96,
+      "cpu": 0.25,
+      "ports": [
+        {
+          "container_port": 8888,
+          "protocol": "udp",
+          "name": "shake_udp",
+          "browsable": false,
+          "label": {
+            "en": "Shake UDP output",
+            "fr": "Sortie UDP du Shake",
+            "de": "UDP-Ausgabe des Shake",
+            "es": "Salida UDP del Shake"
+          }
+        }
+      ]
+    }
+  ],
   "config_schema": [
     {
       "key": "intro",
       "type": "section",
-      "label": { "en": "Getting started", "fr": "Pour commencer" },
+      "label": {
+        "en": "Connect your Raspberry Shake",
+        "fr": "Connectez votre Raspberry Shake",
+        "de": "Verbinde deinen Raspberry Shake",
+        "es": "Conecte su Raspberry Shake"
+      },
       "description": {
-        "en": "The demo weather station reads real data from the free Open-Meteo API: pick the coordinates to observe. No account, no API key.",
-        "fr": "La station météo de démonstration lit de vraies données via l'API gratuite Open-Meteo : choisissez les coordonnées à observer. Pas de compte, pas de clé d'API."
+        "en": "Type the code of your station below. For live data, open the web page of your Shake (rs.local), Settings, Datacast, and add the target host {{gladys_host}}, port {{port:shake_udp}} (chosen by Gladys). Without it, only the online status is followed, through the public data of the network.",
+        "fr": "Saisissez ci-dessous le code de votre station. Pour les données en direct, ouvrez la page web de votre Shake (rs.local), Settings, Datacast, et ajoutez l'hôte {{gladys_host}}, port {{port:shake_udp}} (choisi par Gladys). Sans cela, seul l'état en ligne est suivi, par les données publiques du réseau.",
+        "de": "Gib unten den Code deiner Station ein. Für Live-Daten öffne die Webseite deines Shake (rs.local), Settings, Datacast, und füge den Host {{gladys_host}} mit Port {{port:shake_udp}} hinzu (von Gladys gewählt). Ohne das wird nur der Online-Status über die öffentlichen Daten des Netzes verfolgt.",
+        "es": "Introduzca abajo el código de su estación. Para los datos en directo, abra la página web de su Shake (rs.local), Settings, Datacast, y añada el host {{gladys_host}}, puerto {{port:shake_udp}} (elegido por Gladys). Sin ello, solo se sigue el estado en línea, con los datos públicos de la red."
       },
       "links": [
         {
-          "url": "https://open-meteo.com/en/docs",
-          "label": { "en": "Open-Meteo documentation", "fr": "Documentation Open-Meteo" }
+          "url": "https://github.com/guim31/gladys-raspberry-shake/blob/main/docs/en.md",
+          "label": {
+            "en": "Setup guide",
+            "fr": "Guide d'installation",
+            "de": "Einrichtungsanleitung",
+            "es": "Guía de instalación"
+          }
+        },
+        {
+          "url": "https://manual.raspberryshake.org/udp.html",
+          "label": {
+            "en": "UDP output of the Shake",
+            "fr": "Sortie UDP du Shake",
+            "de": "UDP-Ausgabe des Shake",
+            "es": "Salida UDP del Shake"
+          }
         }
       ]
     },
     {
-      "key": "latitude",
-      "type": "number",
-      "label": { "en": "Latitude", "fr": "Latitude" },
-      "description": {
-        "en": "Latitude used for the demo weather sensor.",
-        "fr": "Latitude utilisée par le capteur météo de démonstration."
-      },
-      "placeholder": { "en": "e.g. 48.8566", "fr": "ex. 48.8566" },
+      "key": "station",
+      "type": "string",
       "required": true,
-      "default": 48.8566,
-      "min": -90,
-      "max": 90
+      "default": "",
+      "label": {
+        "en": "Station code",
+        "fr": "Code de la station",
+        "de": "Stationscode",
+        "es": "Código de la estación"
+      },
+      "description": {
+        "en": "Shown on the web page of your Shake and on the station map, e.g. R1A2B.",
+        "fr": "Affiché sur la page web de votre Shake et sur la carte des stations, ex. R1A2B.",
+        "de": "Steht auf der Webseite deines Shake und auf der Stationskarte, z. B. R1A2B.",
+        "es": "Indicado en la página web de su Shake y en el mapa de estaciones, p. ej. R1A2B."
+      },
+      "placeholder": {
+        "en": "e.g. R1A2B",
+        "fr": "ex. R1A2B",
+        "de": "z. B. R1A2B",
+        "es": "p. ej. R1A2B"
+      }
     },
     {
-      "key": "longitude",
-      "type": "number",
-      "label": { "en": "Longitude", "fr": "Longitude" },
-      "description": {
-        "en": "Longitude used for the demo weather sensor.",
-        "fr": "Longitude utilisée par le capteur météo de démonstration."
-      },
-      "placeholder": { "en": "e.g. 2.3522", "fr": "ex. 2.3522" },
-      "required": true,
-      "default": 2.3522,
-      "min": -180,
-      "max": 180
-    },
-    {
-      "key": "unit",
-      "type": "select",
-      "label": { "en": "Temperature unit", "fr": "Unité de température" },
+      "key": "udp",
+      "type": "boolean",
       "required": false,
-      "default": "celsius",
+      "default": true,
+      "label": {
+        "en": "Use the UDP output",
+        "fr": "Utiliser la sortie UDP",
+        "de": "UDP-Ausgabe nutzen",
+        "es": "Usar la salida UDP"
+      },
+      "description": {
+        "en": "Vibration level, peak and shaking detection, computed in Gladys from the live samples.",
+        "fr": "Niveau de vibration, crête et détection de secousses, calculés dans Gladys à partir des échantillons en direct.",
+        "de": "Vibrationspegel, Spitze und Erkennung von Erschütterungen, in Gladys aus den Live-Werten berechnet.",
+        "es": "Nivel de vibración, pico y detección de sacudidas, calculados en Gladys con las muestras en directo."
+      }
+    },
+    {
+      "key": "shake_ip",
+      "type": "string",
+      "required": false,
+      "default": "",
+      "label": {
+        "en": "Address of the Shake (optional)",
+        "fr": "Adresse du Shake (facultatif)",
+        "de": "Adresse des Shake (optional)",
+        "es": "Dirección del Shake (opcional)"
+      },
+      "description": {
+        "en": "When set, UDP packets from any other address are ignored.",
+        "fr": "Si elle est indiquée, les paquets UDP venant d'une autre adresse sont ignorés.",
+        "de": "Wenn gesetzt, werden UDP-Pakete von anderen Adressen ignoriert.",
+        "es": "Si se indica, se ignoran los paquetes UDP de cualquier otra dirección."
+      },
+      "placeholder": {
+        "en": "e.g. 192.168.1.50",
+        "fr": "ex. 192.168.1.50",
+        "de": "z. B. 192.168.1.50",
+        "es": "p. ej. 192.168.1.50"
+      }
+    },
+    {
+      "key": "sensitivity",
+      "type": "select",
+      "required": false,
+      "default": "normal",
+      "label": {
+        "en": "Shaking detection",
+        "fr": "Détection des secousses",
+        "de": "Erkennung von Erschütterungen",
+        "es": "Detección de sacudidas"
+      },
+      "description": {
+        "en": "STA/LTA trigger ratio: high also catches footsteps and doors near the Shake.",
+        "fr": "Seuil du déclencheur STA/LTA : élevée attrape aussi les pas et les portes près du Shake.",
+        "de": "Schwelle des STA/LTA-Auslösers: Hoch erfasst auch Schritte und Türen nahe am Shake.",
+        "es": "Umbral del disparador STA/LTA: alta también capta pasos y puertas cerca del Shake."
+      },
       "options": [
-        { "value": "celsius", "label": { "en": "Celsius", "fr": "Celsius" } },
-        { "value": "fahrenheit", "label": { "en": "Fahrenheit", "fr": "Fahrenheit" } }
+        {
+          "value": "low",
+          "label": {
+            "en": "Low (ratio 6)",
+            "fr": "Faible (rapport 6)",
+            "de": "Niedrig (Verhältnis 6)",
+            "es": "Baja (relación 6)"
+          }
+        },
+        {
+          "value": "normal",
+          "label": {
+            "en": "Normal (ratio 4)",
+            "fr": "Normale (rapport 4)",
+            "de": "Normal (Verhältnis 4)",
+            "es": "Normal (relación 4)"
+          }
+        },
+        {
+          "value": "high",
+          "label": {
+            "en": "High (ratio 3)",
+            "fr": "Élevée (rapport 3)",
+            "de": "Hoch (Verhältnis 3)",
+            "es": "Alta (relación 3)"
+          }
+        }
       ]
     },
     {
-      "key": "poll_frequency",
-      "type": "number",
-      "label": { "en": "Refresh interval (s)", "fr": "Intervalle de rafraîchissement (s)" },
-      "description": {
-        "en": "How often sensors are polled, in seconds (one minute minimum).",
-        "fr": "Fréquence d'interrogation des capteurs, en secondes (une minute minimum)."
-      },
+      "key": "offline_after",
+      "type": "select",
       "required": false,
-      "default": 300,
-      "min": 60,
-      "max": 3600
+      "default": "60",
+      "label": {
+        "en": "Offline after",
+        "fr": "Hors ligne après",
+        "de": "Offline nach",
+        "es": "Fuera de línea tras"
+      },
+      "description": {
+        "en": "Without UDP, the public data of the network arrives about 30 minutes late.",
+        "fr": "Sans UDP, les données publiques du réseau arrivent avec 30 minutes de retard environ.",
+        "de": "Ohne UDP kommen die öffentlichen Daten des Netzes etwa 30 Minuten verspätet an.",
+        "es": "Sin UDP, los datos públicos de la red llegan con unos 30 minutos de retraso."
+      },
+      "options": [
+        {
+          "value": "60",
+          "label": {
+            "en": "1 hour without data",
+            "fr": "1 heure sans donnée",
+            "de": "1 Stunde ohne Daten",
+            "es": "1 hora sin datos"
+          }
+        },
+        {
+          "value": "120",
+          "label": {
+            "en": "2 hours without data",
+            "fr": "2 heures sans donnée",
+            "de": "2 Stunden ohne Daten",
+            "es": "2 horas sin datos"
+          }
+        },
+        {
+          "value": "360",
+          "label": {
+            "en": "6 hours without data",
+            "fr": "6 heures sans donnée",
+            "de": "6 Stunden ohne Daten",
+            "es": "6 horas sin datos"
+          }
+        }
+      ]
+    },
+    {
+      "key": "language",
+      "type": "select",
+      "required": false,
+      "default": "fr",
+      "label": {
+        "en": "Language of the names and texts",
+        "fr": "Langue des noms et des textes",
+        "de": "Sprache der Namen und Texte",
+        "es": "Idioma de los nombres y textos"
+      },
+      "description": {
+        "en": "Feature names (set when the device is added) and dates.",
+        "fr": "Noms des fonctionnalités (fixés à l'ajout de l'appareil) et dates.",
+        "de": "Namen der Funktionen (beim Hinzufügen festgelegt) und Datumsangaben.",
+        "es": "Nombres de las funciones (fijados al añadir el dispositivo) y fechas."
+      },
+      "options": [
+        {
+          "value": "en",
+          "label": {
+            "en": "English",
+            "fr": "Anglais",
+            "de": "Englisch",
+            "es": "Inglés"
+          }
+        },
+        {
+          "value": "fr",
+          "label": {
+            "en": "French",
+            "fr": "Français",
+            "de": "Französisch",
+            "es": "Francés"
+          }
+        },
+        {
+          "value": "de",
+          "label": {
+            "en": "German",
+            "fr": "Allemand",
+            "de": "Deutsch",
+            "es": "Alemán"
+          }
+        },
+        {
+          "value": "es",
+          "label": {
+            "en": "Spanish",
+            "fr": "Espagnol",
+            "de": "Spanisch",
+            "es": "Español"
+          }
+        }
+      ]
     }
   ],
   "actions": [
     {
-      "key": "test_weather",
-      "label": { "en": "Test the weather provider", "fr": "Tester le fournisseur météo" },
-      "timeout_seconds": 30
-    },
-    {
-      "key": "identify",
-      "label": { "en": "Identify a device", "fr": "Identifier un appareil" },
-      "fields": [
-        {
-          "key": "device",
-          "type": "select",
-          "source": "devices",
-          "label": { "en": "Device", "fr": "Appareil" },
-          "required": true
-        }
-      ]
+      "key": "check_now",
+      "label": {
+        "en": "Check the station now",
+        "fr": "Vérifier la station maintenant",
+        "de": "Station jetzt prüfen",
+        "es": "Comprobar la estación ahora"
+      },
+      "timeout_seconds": 60
     }
   ],
   "scene_triggers": [
     {
-      "key": "motion_detected",
-      "label": { "en": "Motion detected", "fr": "Mouvement détecté" },
-      "description": {
-        "en": "A demo motion sensor saw a person or an animal move.",
-        "fr": "Un détecteur de démonstration a vu bouger une personne ou un animal."
+      "key": "shaking_detected",
+      "label": {
+        "en": "Shaking detected",
+        "fr": "Secousse détectée",
+        "de": "Erschütterung erkannt",
+        "es": "Sacudida detectada"
       },
-      "fields": [
-        {
-          "key": "device",
-          "type": "select",
-          "source": "devices",
-          "label": { "en": "Sensor", "fr": "Détecteur" }
-        },
-        {
-          "key": "target",
-          "type": "multi_select",
-          "label": { "en": "What moved", "fr": "Ce qui a bougé" },
-          "options": [
-            { "value": "person", "label": { "en": "Person", "fr": "Personne" } },
-            { "value": "animal", "label": { "en": "Animal", "fr": "Animal" } }
-          ]
-        }
-      ],
+      "description": {
+        "en": "The STA/LTA trigger went on (UDP output): an earthquake, or a nearby shock or footsteps.",
+        "fr": "Le déclencheur STA/LTA s'est activé (sortie UDP) : séisme, choc proche ou pas.",
+        "de": "Der STA/LTA-Auslöser hat angesprochen (UDP-Ausgabe): Erdbeben, Stoß in der Nähe oder Schritte.",
+        "es": "El disparador STA/LTA se ha activado (salida UDP): terremoto, golpe cercano o pasos."
+      },
       "variables": [
         {
-          "key": "target",
+          "key": "station",
           "type": "string",
-          "label": { "en": "What moved", "fr": "Ce qui a bougé" }
+          "label": {
+            "en": "Station",
+            "fr": "Station",
+            "de": "Station",
+            "es": "Estación"
+          }
+        },
+        {
+          "key": "ratio",
+          "type": "number",
+          "label": {
+            "en": "STA/LTA ratio",
+            "fr": "Rapport STA/LTA",
+            "de": "STA/LTA-Verhältnis",
+            "es": "Relación STA/LTA"
+          }
         }
       ]
-    }
-  ],
-  "scene_actions": [
+    },
     {
-      "key": "identify_device",
-      "label": { "en": "Identify a device", "fr": "Identifier un appareil" },
-      "description": {
-        "en": "Make a device signal itself (the demo light blinks).",
-        "fr": "Fait se signaler un appareil (la lampe de démonstration clignote)."
+      "key": "shaking_ended",
+      "label": {
+        "en": "Back to calm",
+        "fr": "Retour au calme",
+        "de": "Wieder ruhig",
+        "es": "Vuelta a la calma"
       },
-      "timeout_seconds": 15,
-      "fields": [
+      "description": {
+        "en": "The shaking is over: its peak amplitude (counts) and its duration (seconds).",
+        "fr": "La secousse est terminée : son amplitude crête (counts) et sa durée (secondes).",
+        "de": "Die Erschütterung ist vorbei: ihre Spitzenamplitude (Counts) und ihre Dauer (Sekunden).",
+        "es": "La sacudida ha terminado: su amplitud máxima (counts) y su duración (segundos)."
+      },
+      "variables": [
         {
-          "key": "device",
-          "type": "select",
-          "source": "devices",
-          "label": { "en": "Device", "fr": "Appareil" },
-          "required": true
+          "key": "station",
+          "type": "string",
+          "label": {
+            "en": "Station",
+            "fr": "Station",
+            "de": "Station",
+            "es": "Estación"
+          }
+        },
+        {
+          "key": "peak",
+          "type": "number",
+          "label": {
+            "en": "Peak amplitude",
+            "fr": "Amplitude crête",
+            "de": "Spitzenamplitude",
+            "es": "Amplitud máxima"
+          }
+        },
+        {
+          "key": "duration",
+          "type": "number",
+          "label": {
+            "en": "Duration (s)",
+            "fr": "Durée (s)",
+            "de": "Dauer (s)",
+            "es": "Duración (s)"
+          }
         }
-      ],
-      "outputs": [
+      ]
+    },
+    {
+      "key": "station_offline",
+      "label": {
+        "en": "Station offline",
+        "fr": "Station hors ligne",
+        "de": "Station offline",
+        "es": "Estación fuera de línea"
+      },
+      "description": {
+        "en": "The station was online and no data came within the configured delay.",
+        "fr": "La station était en ligne et aucune donnée n'est arrivée dans le délai configuré.",
+        "de": "Die Station war online und in der eingestellten Zeit kamen keine Daten.",
+        "es": "La estación estaba en línea y no llegó ningún dato en el plazo configurado."
+      },
+      "variables": [
         {
-          "key": "signalled",
-          "type": "boolean",
-          "label": { "en": "Device signalled", "fr": "Appareil signalé" }
+          "key": "station",
+          "type": "string",
+          "label": {
+            "en": "Station",
+            "fr": "Station",
+            "de": "Station",
+            "es": "Estación"
+          }
+        },
+        {
+          "key": "last_data",
+          "type": "string",
+          "label": {
+            "en": "Last data",
+            "fr": "Dernière donnée",
+            "de": "Letzte Daten",
+            "es": "Último dato"
+          }
         }
       ]
     }
   ],
   "widgets": [
     {
-      "key": "demo_status",
-      "label": { "en": "Demo status", "fr": "État de la démo" },
+      "key": "station",
+      "label": {
+        "en": "Raspberry Shake",
+        "fr": "Raspberry Shake",
+        "de": "Raspberry Shake",
+        "es": "Raspberry Shake"
+      },
       "description": {
-        "en": "Live temperature and plug power, plug connection and observed location.",
-        "fr": "Température et puissance en direct, connexion de la prise, position observée."
+        "en": "Station status, live vibration level and peak, vibration level of the last day.",
+        "fr": "État de la station, niveau de vibration et crête en direct, niveau sur la dernière journée.",
+        "de": "Stationsstatus, Vibrationspegel und Spitze live, Pegel des letzten Tages.",
+        "es": "Estado de la estación, nivel de vibración y pico en directo, nivel del último día."
       },
       "icon": "activity",
-      "action_timeout_seconds": 15
+      "settings": [
+        {
+          "key": "show_chart",
+          "type": "boolean",
+          "required": false,
+          "default": true,
+          "label": {
+            "en": "Show the 24 h chart",
+            "fr": "Afficher la courbe sur 24 h",
+            "de": "24-h-Kurve anzeigen",
+            "es": "Mostrar la curva de 24 h"
+          }
+        }
+      ]
     }
   ]
 }
